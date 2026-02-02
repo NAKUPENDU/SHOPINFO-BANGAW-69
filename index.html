@@ -339,8 +339,12 @@
                 download: true,
                 header: false,
                 complete: function(results) {
-                    // Filter out empty rows and ensure Name exists
-                    rawData = results.data.slice(1).filter(row => row[COLS.NAME] && row[COLS.NAME].trim() !== ""); 
+                    // Filter out empty rows, ensure Name exists, and exclude the secondary header row "ลำดับ"
+                    rawData = results.data.slice(1).filter(row => 
+                        row[COLS.NAME] && 
+                        row[COLS.NAME].trim() !== "" &&
+                        row[COLS.NO] !== "ลำดับ"
+                    ); 
                     processData(rawData);
                     document.getElementById('loading').style.display = 'none';
                 },
