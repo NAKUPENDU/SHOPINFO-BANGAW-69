@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bang O Event Dashboard - ระบบบริหารจัดการร้านค้า</title>
+    
+    <!-- Libraries -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;600;700&display=swap" rel="stylesheet">
+
+    <style>
+        body {
+            font-family: 'Sarabun', sans-serif;
+            background: linear-gradient(135deg, #FF9A9E 0%, #FECFEF 30%, #E0C3FC 60%, #8EC5FC 100%);
+            min-height: 100vh;
+        }
+
+        /* Glassmorphism Card Style */
+        .glass-card {
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(10px);
+            border-radius: 16px;
+            border: 1px solid rgba(255, 255, 255, 0.5);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            transition: transform 0.2s;
+        }
+        
+        .glass-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+
+        /* Tab Navigation */
+        .nav-tab {
+            cursor: pointer;
+            padding: 12px 24px;
+            font-weight: 600;
+            color: #4a5568;
+            border-bottom: 3px solid transparent;
+            transition: all 0.3s;
+        }
+        .nav-tab.active {
+            color: #6b46c1;
+            border-bottom-color: #6b46c1;
+            background-color: rgba(255, 255, 255, 0.5);
+            border-radius: 8px 8px 0 0;
+        }
+
+        /* Table Styles */
+        .custom-table th {
+            background-color: #4a5568;
+            color: white;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        .custom-table tbody tr:nth-child(even) {
+            background-color: #f7fafc;
+        }
+        .custom-table tbody tr:hover {
+            background-color: #ebf8ff;
+        }
+
+        /* Print Settings */
+        @media print {
+            @page { size: landscape; margin: 10mm; }
+            body { 
+                background: white; 
+                -webkit-print-color-adjust: exact; 
+            }
+            .no-print { display: none !important; }
+            .glass-card {
+                box-shadow: none;
+                border: 1px solid #ccc;
+                break-inside: avoid;
+            }
+            .dashboard-container { width: 100%; max-width: 100%; padding: 0; }
+            .overflow-x-auto { overflow: visible !important; }
+            table { width: 100%; font-size: 10px; }
+            .tab-content { display: block !important; } 
+            #tab-dashboard, #tab-details { display: block; margin-bottom: 20px; page-break-after: always; }
+        }
+        
+        /* Loading Overlay */
+        #loading {
+            position: fixed; inset: 0; background: rgba(255,255,255,0.9);
+            z-index: 50; display: flex; justify-content: center; align-items: center;
+            flex-direction: column;
+        }
+
+        .hidden-tab { display: none; }
+    </style>
+</head>
+<body class="text-gray-800">
+
+    <!-- Loading Screen -->
+    <div id="loading">
+        <div class="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-purple-600 mb-4"></div>
+        <h2 class="text-xl font-bold text-purple-700">กำลังเชื่อมต่อข้อมูลจาก Google Sheet...</h2>
+    </div>
+
+    <div class="dashboard-container container mx-auto px-4 py-8">
+        
+        <!-- Header -->
+        <header class="flex flex-col md:flex-row justify-between items-center mb-6 glass-card p-6 no-print">
+            <div>
+                <h1 class="text-3xl font-bold text-gray-800 flex items-center gap-3">
+                    <i class="fas fa-store text-purple-600"></i>
+                    Bang O Event Dashboard
+                </h1>
+                <p class="text-gray-600 mt-1">ระบบบริหารจัดการร้านค้าและวิเคราะห์ต้นทุน</p>
+            </div>
+            <div class="flex gap-2 mt-4 md:mt-0">
+                <button onclick="window.print()" class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg shadow transition flex items-center gap-2">
+                    <i class="fas fa-print"></i> PDF/Print
+                </button>
+                <button onclick="exportToExcel()" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg shadow transition flex items-center gap-2">
+                    <i class="fas fa-file-excel"></i> Export Excel
+                </button>
+                <button onclick="fetchData()" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-lg shadow transition flex items-center gap-2">
+                    <i class="fas fa-sync-alt"></i> Refresh
+                </button>
+            </div>
+        </header>
+
+        <!-- Navigation Tabs -->
+        <div class="flex mb-4 border-b border-gray-300 no-print pl-4">
+            <div id="nav-dashboard" class="nav-tab active" onclick="switchTab('dashboard')">
+                <i class="fas fa-chart-pie mr-2"></i>ภาพรวม (Dashboard)
+            </div>
+            <div id="nav-details" class="nav-tab" onclick="switchTab('details')">
+                <i class="fas fa-list-ul mr-2"></i>รายละเอียดสินค้า (Item List)
+            </div>
+        </div>
+
+        <!-- TAB 1: DASHBOARD OVERVIEW -->
+        <div id="tab-dashboard" class="tab-content">
+            <!-- KPI Cards Grid -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                <!-- Total Shops -->
+                <div class="glass-card p-6 border-l-4 border-blue-500">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <p class="text-sm text-gray-500 font-semibold uppercase">จำนวนร้านค้า</p>
+                            <h3 class="text-3xl font-bold text-gray-800 mt-2" id="kpi-total-shops">0</h3>
+                        </div>
+                        <div class="p-3 bg-blue-100 rounded-full text-blue-600">
+                            <i class="fas fa-store-alt fa-lg"></i>
+                        </div>
+                    </div>
+                    <div class="mt-4 text-xs text-gray-500" id="kpi-groups-count">รอข้อมูล...</div>
+                </div>
+
+                <!-- Total Food Items -->
+                <div class="glass-card p-6 border-l-4 border-orange-500">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <p class="text-sm text-gray-500 font-semibold uppercase">จำนวนรายการ</p>
+                            <h3 class="text-3xl font-bold text-gray-800 mt-2" id="kpi-total-items">0</h3>
+                        </div>
+                        <div class="p-3 bg-orange-100 rounded-full text-orange-600">
+                            <i class="fas fa-utensils fa-lg"></i>
+                        </div>
+                    </div>
+                    <div class="mt-4 text-xs text-gray-500">เมนูอาหารและสินค้า</div>
+                </div>
+
+                <!-- Financials -->
+                <div class="glass-card p-6 border-l-4 border-green-500">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <p class="text-sm text-gray-500 font-semibold uppercase">ยอดขายรวม (ประมาณการ)</p>
+                            <h3 class="text-2xl font-bold text-gray-800 mt-2 text-green-700" id="kpi-est-sales">0 ฿</h3>
+                            <p class="text-xs text-gray-500 mt-1">ทุนรวม: <span id="kpi-total-cost">0</span> ฿</p>
+                        </div>
+                        <div class="p-3 bg-green-100 rounded-full text-green-600">
+                            <i class="fas fa-coins fa-lg"></i>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Profit & Status -->
+                <div class="glass-card p-6 border-l-4 border-purple-500">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <p class="text-sm text-gray-500 font-semibold uppercase">กำไรสุทธิ</p>
+                            <h3 class="text-2xl font-bold text-gray-800 mt-2 text-purple-700" id="kpi-profit">0 ฿</h3>
+                            <p class="text-xs text-gray-500 mt-1">Margin: <span id="kpi-margin" class="font-bold">0%</span></p>
+                        </div>
+                        <div class="p-3 bg-purple-100 rounded-full text-purple-600">
+                            <i class="fas fa-chart-line fa-lg"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Charts Section -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+                <!-- Shop Type Comparison Cards -->
+                <div class="glass-card p-6 flex flex-col">
+                    <h4 class="text-lg font-bold text-gray-700 mb-4 border-b pb-2">สัดส่วนร้านค้า (ทุน vs เช่า)</h4>
+                    <div class="flex gap-4 h-full items-center justify-center py-4">
+                        <!-- Fund Shop Card -->
+                        <div class="bg-green-50 p-6 rounded-2xl text-center w-1/2 border-2 border-green-200 shadow-sm flex flex-col justify-center items-center hover:bg-green-100 transition">
+                             <div class="p-3 bg-green-100 rounded-full text-green-600 mb-2">
+                                <i class="fas fa-hand-holding-usd fa-2x"></i>
+                             </div>
+                             <div class="text-4xl font-extrabold text-green-700" id="count-fund-shops">0</div>
+                             <div class="text-sm text-green-800 font-semibold mt-1">ร้านทุน</div>
+                        </div>
+                        
+                        <div class="text-gray-400 font-bold text-xl italic">VS</div>
+
+                        <!-- Rent Shop Card -->
+                        <div class="bg-red-50 p-6 rounded-2xl text-center w-1/2 border-2 border-red-200 shadow-sm flex flex-col justify-center items-center hover:bg-red-100 transition">
+                             <div class="p-3 bg-red-100 rounded-full text-red-600 mb-2">
+                                <i class="fas fa-file-contract fa-2x"></i>
+                             </div>
+                             <div class="text-4xl font-extrabold text-red-700" id="count-rent-shops">0</div>
+                             <div class="text-sm text-red-800 font-semibold mt-1">ร้านเช่าพื้นที่</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Food Group Chart -->
+                <div class="glass-card p-6">
+                    <h4 class="text-lg font-bold text-gray-700 mb-4 border-b pb-2">กลุ่มอาหาร (Food Group)</h4>
+                    <div class="h-64 flex justify-center">
+                        <canvas id="foodGroupChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Search & Filter Section (Overview) -->
+            <div class="glass-card p-6 mb-6 no-print">
+                <h4 class="text-lg font-bold text-gray-700 mb-4"><i class="fas fa-search mr-2"></i>ค้นหาข้อมูล (มุมมองร้านค้า)</h4>
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    <input type="text" id="search-name" placeholder="ชื่อร้านค้า..." class="p-2 border rounded-lg focus:ring-2 focus:ring-purple-400 outline-none w-full" onkeyup="filterMainTable()">
+                    <input type="text" id="search-sponsor" placeholder="ผู้สนับสนุน..." class="p-2 border rounded-lg focus:ring-2 focus:ring-purple-400 outline-none w-full" onkeyup="filterMainTable()">
+                    <input type="text" id="search-coord" placeholder="ผู้ประสานงาน..." class="p-2 border rounded-lg focus:ring-2 focus:ring-purple-400 outline-none w-full" onkeyup="filterMainTable()">
+                    <select id="search-group" class="p-2 border rounded-lg focus:ring-2 focus:ring-purple-400 outline-none w-full" onchange="filterMainTable()">
+                        <option value="">ทุกกลุ่มอาหาร</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Main Data Table -->
+            <div class="glass-card overflow-hidden">
+                <div class="p-4 bg-gray-50 border-b flex justify-between items-center">
+                    <h3 class="font-bold text-gray-700">รายชื่อร้านค้า</h3>
+                    <span class="text-sm text-gray-500" id="row-count">แสดง 0 รายการ</span>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full custom-table text-sm text-left text-gray-600" id="main-table">
+                        <thead class="text-xs uppercase bg-gray-700 text-white">
+                            <tr>
+                                <th class="px-4 py-3 rounded-tl-lg">#</th>
+                                <th class="px-4 py-3">กลุ่ม/ที่มา</th>
+                                <th class="px-4 py-3">ชื่อร้านค้า</th>
+                                <th class="px-4 py-3">รายการอาหาร</th>
+                                <th class="px-4 py-3">ผู้สนับสนุน/ประสานงาน</th>
+                                <th class="px-4 py-3">เวลาขาย</th>
+                                <th class="px-4 py-3 text-right">กำไร (฿)</th>
+                                <th class="px-4 py-3 rounded-tr-lg">สถานะ</th>
+                            </tr>
+                        </thead>
+                        <tbody id="table-body">
+                            <!-- Rows will be populated by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- TAB 2: DETAILED ITEM LIST -->
+        <div id="tab-details" class="tab-content hidden-tab">
+            
+            <div class="glass-card p-6 mb-6">
+                <h2 class="text-2xl font-bold text-gray-700 mb-2"><i class="fas fa-box-open text-orange-500 mr-2"></i>รายละเอียดสินค้าและการเงิน</h2>
+                <p class="text-gray-500 mb-4">แสดงข้อมูลเจาะลึกรายสินค้า ต้นทุน ราคาขาย และกำไรต่อหน่วย</p>
+                
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                    <input type="text" id="detail-search" placeholder="พิมพ์ชื่อร้าน หรือ ชื่อเมนูอาหาร เพื่อค้นหา..." class="p-3 border rounded-lg focus:ring-2 focus:ring-purple-400 outline-none w-full shadow-sm" onkeyup="filterDetailTable()">
+                </div>
+            </div>
+
+            <div class="glass-card overflow-hidden">
+                <div class="overflow-x-auto">
+                    <table class="w-full custom-table text-sm text-left text-gray-600" id="detail-table">
+                        <thead class="text-xs uppercase bg-purple-700 text-white">
+                            <tr>
+                                <th class="px-4 py-3">ชื่อร้านค้า</th>
+                                <th class="px-4 py-3">รายการสินค้า</th>
+                                <th class="px-4 py-3 text-right bg-red-600">ราคาทุน (รวม)</th>
+                                <th class="px-4 py-3 text-right bg-blue-600">ขาย/หน่วย</th>
+                                <th class="px-4 py-3 text-right bg-blue-600">จำนวน</th>
+                                <th class="px-4 py-3 text-right bg-green-600">ยอดขาย (รวม)</th>
+                                <th class="px-4 py-3 text-right bg-purple-600">กำไรสุทธิ</th>
+                                <th class="px-4 py-3 text-right">% Margin</th>
+                            </tr>
+                        </thead>
+                        <tbody id="detail-table-body">
+                            <!-- Rows populated by JS -->
+                        </tbody>
+                    </table>
+                </div>
+                <div class="p-4 bg-gray-50 border-t text-right">
+                    <span class="text-sm text-gray-500" id="detail-row-count"></span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Footer -->
+        <footer class="mt-8 text-center text-gray-600 text-sm pb-8 no-print">
+            <p>Generated by System Analysis Bot | Data Source: Google Sheets (shopinfo_tbl)</p>
+        </footer>
+
+    </div>
+
+    <script>
+        // --- Configuration ---
+        const SHEET_ID = '14QTUCNvFWyzbsF0hjztptFbdhTDnSSCnyB22oX5VCtU';
+        const GID = '921707681'; 
+        const CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/export?format=csv&gid=${GID}`;
+
+        // Updated Column Mapping
+        const COLS = {
+            NO: 0,              // A: เลขที่
+            GROUP: 1,           // B: กลุ่มร้านค้า
+            NAME: 6,            // G: ชื่อร้านค้า
+            FOOD_ITEM: 9,       // J: รายการอาหาร
+            FOOD_GROUP: 13,     // N: กลุ่มอาหาร
+            SPONSOR: 15,        // P: ผู้สนับสนุน
+            COORD: 16,          // Q: ผู้ประสานงาน
+            COST: 17,           // R: ราคาทุน
+            UNIT_PRICE: 18,     // S: ราคาขายต่อหน่วย
+            QTY: 19,            // T: จำนวนสินค้า
+            EST_SALES: 20,      // U: ประมาณการยอดขาย
+            PROFIT: 21,         // V: กำไร/ขาดทุน
+            TIME: 22,           // W: เวลาขาย (Assumed/Placeholder based on requirement)
+            TYPE_RENT: 25,      // Z: ประเภททุน/เช่า
+            STATUS: 26,         // AA: สถานะ
+            PHONE: 28           // AC: เบอร์โทร
+        };
+
+        let rawData = [];
+        let charts = {};
+
+        // --- Functions ---
+
+        async function fetchData() {
+            document.getElementById('loading').style.display = 'flex';
+            
+            Papa.parse(CSV_URL, {
+                download: true,
+                header: false,
+                complete: function(results) {
+                    // Filter out empty rows and ensure Name exists
+                    rawData = results.data.slice(1).filter(row => row[COLS.NAME] && row[COLS.NAME].trim() !== ""); 
+                    processData(rawData);
+                    document.getElementById('loading').style.display = 'none';
+                },
+                error: function(err) {
+                    console.error("Error:", err);
+                    alert("ไม่สามารถดึงข้อมูลได้");
+                    document.getElementById('loading').style.display = 'none';
+                }
+            });
+        }
+
+        function cleanNum(str) {
+            if (typeof str !== 'string') return typeof str === 'number' ? str : 0;
+            return parseFloat(str.replace(/,/g, '')) || 0;
+        }
+
+        function formatCurrency(num) {
+            return new Intl.NumberFormat('th-TH', { style: 'currency', currency: 'THB' }).format(num).replace('฿', '');
+        }
+
+        function switchTab(tabName) {
+            // Hide all tabs
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden-tab'));
+            document.querySelectorAll('.nav-tab').forEach(el => el.classList.remove('active'));
+
+            // Show selected
+            document.getElementById(`tab-${tabName}`).classList.remove('hidden-tab');
+            document.getElementById(`nav-${tabName}`).classList.add('active');
+        }
+
+        function processData(data) {
+            let totalShops = data.length;
+            let totalCost = 0, totalEstSales = 0, totalProfit = 0, totalItems = 0;
+            let groups = new Set();
+            let foodGroups = {};
+            
+            // Simplified Shop Types: Fund vs Rent
+            let shopTypes = { "ร้านทุน": 0, "ร้านเช่า": 0, "อื่นๆ": 0 };
+
+            data.forEach(row => {
+                // KPIs
+                totalCost += cleanNum(row[COLS.COST]);
+                totalEstSales += cleanNum(row[COLS.EST_SALES]);
+                totalProfit += cleanNum(row[COLS.PROFIT]);
+                
+                if(row[COLS.FOOD_ITEM]) totalItems++;
+                if(row[COLS.GROUP]) groups.add(row[COLS.GROUP]);
+
+                // Food Group Aggregation (Exclude Header)
+                let fg = (row[COLS.FOOD_GROUP] || "").trim();
+                if (fg && fg !== "กลุ่มอาหาร" && fg !== "Food Group") {
+                     foodGroups[fg] = (foodGroups[fg] || 0) + 1;
+                }
+
+                // Shop Type Logic (Fund vs Rent) - Modified to search broadly in multiple columns
+                // Check both Group (Col B) and Type Rent (Col Z) for keywords "เช่า" or "ทุน"
+                let checkStr = ((row[COLS.TYPE_RENT] || "") + " " + (row[COLS.GROUP] || "")).toString();
+                
+                if (checkStr.includes("เช่า")) {
+                    shopTypes["ร้านเช่า"]++;
+                } else if (checkStr.includes("ทุน")) {
+                    shopTypes["ร้านทุน"]++;
+                } else {
+                    shopTypes["อื่นๆ"]++;
+                }
+            });
+
+            // Update DOM KPIs
+            document.getElementById('kpi-total-shops').innerText = totalShops;
+            document.getElementById('kpi-groups-count').innerText = `${groups.size} กลุ่มร้านค้า`;
+            document.getElementById('kpi-total-items').innerText = totalItems;
+            document.getElementById('kpi-total-cost').innerText = formatCurrency(totalCost);
+            document.getElementById('kpi-est-sales').innerText = formatCurrency(totalEstSales) + " ฿";
+            document.getElementById('kpi-profit').innerText = formatCurrency(totalProfit) + " ฿";
+            
+            let margin = totalEstSales > 0 ? (totalProfit / totalEstSales) * 100 : 0;
+            document.getElementById('kpi-margin').innerText = margin.toFixed(2) + "%";
+
+            // Update NEW Shop Type Cards
+            document.getElementById('count-fund-shops').innerText = shopTypes["ร้านทุน"];
+            document.getElementById('count-rent-shops').innerText = shopTypes["ร้านเช่า"];
+
+            // Update Dropdown
+            const groupSelect = document.getElementById('search-group');
+            groupSelect.innerHTML = '<option value="">ทุกกลุ่มอาหาร</option>';
+            Object.keys(foodGroups).forEach(g => {
+                let opt = document.createElement('option');
+                opt.value = g;
+                opt.innerText = g;
+                groupSelect.appendChild(opt);
+            });
+
+            // Render Visualization
+            renderCharts(foodGroups);
+            
+            // Render Tables
+            renderMainTable(data);
+            renderDetailTable(data);
+        }
+
+        function renderCharts(foodGroups) {
+            // Note: shopTypeChart is removed, only foodGroupChart remains
+            if (charts.foodGroup) charts.foodGroup.destroy();
+
+            // Bar Chart: Food Group
+            const ctx2 = document.getElementById('foodGroupChart').getContext('2d');
+            charts.foodGroup = new Chart(ctx2, {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(foodGroups),
+                    datasets: [{
+                        label: 'จำนวนร้าน',
+                        data: Object.values(foodGroups),
+                        backgroundColor: '#ed8936',
+                        borderRadius: 4
+                    }]
+                },
+                options: { 
+                    responsive: true, 
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: { y: { beginAtZero: true } }
+                }
+            });
+        }
+
+        function renderMainTable(data) {
+            const tbody = document.getElementById('table-body');
+            tbody.innerHTML = '';
+            
+            data.forEach(row => {
+                const tr = document.createElement('tr');
+                tr.className = "border-b hover:bg-gray-50 transition";
+                
+                let profit = cleanNum(row[COLS.PROFIT]);
+                let profitClass = profit >= 0 ? "text-green-600" : "text-red-600";
+                
+                tr.innerHTML = `
+                    <td class="px-4 py-3 font-semibold text-gray-500">${row[COLS.NO] || '-'}</td>
+                    <td class="px-4 py-3 text-xs">
+                        <div class="font-bold text-gray-700">${row[COLS.GROUP] || '-'}</div>
+                        <div class="text-gray-400">${row[COLS.TYPE_RENT] || ''}</div>
+                    </td>
+                    <td class="px-4 py-3 font-medium text-purple-900">${row[COLS.NAME]}</td>
+                    <td class="px-4 py-3 text-sm text-gray-600">${row[COLS.FOOD_ITEM]}</td>
+                    <td class="px-4 py-3 text-xs text-gray-500">
+                        <div><i class="fas fa-hand-holding-heart text-pink-400"></i> ${row[COLS.SPONSOR] || '-'}</div>
+                        <div><i class="fas fa-user-tie text-blue-400"></i> ${row[COLS.COORD] || '-'}</div>
+                    </td>
+                    <td class="px-4 py-3 text-sm text-blue-600 font-semibold">
+                         <i class="far fa-clock"></i> ${row[COLS.TIME] || '-'}
+                    </td>
+                    <td class="px-4 py-3 text-right font-bold ${profitClass}">
+                        ${row[COLS.PROFIT]}
+                    </td>
+                    <td class="px-4 py-3 text-center">
+                        <span class="text-xs px-2 py-1 rounded-full ${row[COLS.STATUS] && row[COLS.STATUS].includes('พร้อม') ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}">
+                            ${row[COLS.STATUS] || 'รอตรวจสอบ'}
+                        </span>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+            document.getElementById('row-count').innerText = `แสดง ${data.length} รายการ`;
+        }
+
+        function renderDetailTable(data) {
+            const tbody = document.getElementById('detail-table-body');
+            tbody.innerHTML = '';
+            
+            data.forEach(row => {
+                const tr = document.createElement('tr');
+                tr.className = "border-b hover:bg-purple-50 transition";
+                
+                let cost = cleanNum(row[COLS.COST]);
+                let sales = cleanNum(row[COLS.EST_SALES]);
+                let profit = cleanNum(row[COLS.PROFIT]);
+                let margin = sales > 0 ? (profit / sales) * 100 : 0;
+                
+                let marginClass = margin > 20 ? "text-green-600" : (margin > 0 ? "text-orange-500" : "text-red-600");
+
+                tr.innerHTML = `
+                    <td class="px-4 py-3 font-bold text-gray-700">${row[COLS.NAME]}</td>
+                    <td class="px-4 py-3 text-gray-600">${row[COLS.FOOD_ITEM]}</td>
+                    <td class="px-4 py-3 text-right font-mono text-red-600">${row[COLS.COST]}</td>
+                    <td class="px-4 py-3 text-right font-mono text-blue-600">${row[COLS.UNIT_PRICE] || '-'}</td>
+                    <td class="px-4 py-3 text-right font-mono text-blue-600">${row[COLS.QTY] || '-'}</td>
+                    <td class="px-4 py-3 text-right font-mono font-bold text-green-700">${row[COLS.EST_SALES]}</td>
+                    <td class="px-4 py-3 text-right font-mono font-bold ${profit >= 0 ? 'text-purple-700' : 'text-red-600'}">${row[COLS.PROFIT]}</td>
+                    <td class="px-4 py-3 text-right font-bold ${marginClass}">${margin.toFixed(1)}%</td>
+                `;
+                tbody.appendChild(tr);
+            });
+            document.getElementById('detail-row-count').innerText = `รายการสินค้าทั้งหมด ${data.length} รายการ`;
+        }
+
+        function filterMainTable() {
+            const name = document.getElementById('search-name').value.toLowerCase();
+            const sponsor = document.getElementById('search-sponsor').value.toLowerCase();
+            const coord = document.getElementById('search-coord').value.toLowerCase();
+            const group = document.getElementById('search-group').value;
+
+            const filtered = rawData.filter(row => {
+                const rName = (row[COLS.NAME] || "").toLowerCase();
+                const rSponsor = (row[COLS.SPONSOR] || "").toLowerCase();
+                const rCoord = (row[COLS.COORD] || "").toLowerCase();
+                const rFoodGroup = (row[COLS.FOOD_GROUP] || "");
+
+                return rName.includes(name) &&
+                       rSponsor.includes(sponsor) &&
+                       rCoord.includes(coord) &&
+                       (group === "" || rFoodGroup === group);
+            });
+            renderMainTable(filtered);
+        }
+
+        function filterDetailTable() {
+            const term = document.getElementById('detail-search').value.toLowerCase();
+            
+            const filtered = rawData.filter(row => {
+                const rName = (row[COLS.NAME] || "").toLowerCase();
+                const rItem = (row[COLS.FOOD_ITEM] || "").toLowerCase();
+                return rName.includes(term) || rItem.includes(term);
+            });
+            renderDetailTable(filtered);
+        }
+
+        function exportToExcel() {
+            // Updated Export Logic to include 2 sheets
+            const wb = XLSX.utils.book_new();
+            
+            // Sheet 1: Overview
+            const overviewData = rawData.map(row => ({
+                "ชื่อร้านค้า": row[COLS.NAME],
+                "กลุ่ม": row[COLS.GROUP],
+                "ประเภท": row[COLS.TYPE_RENT],
+                "ผู้สนับสนุน": row[COLS.SPONSOR],
+                "ยอดขาย": row[COLS.EST_SALES],
+                "กำไร": row[COLS.PROFIT]
+            }));
+            const ws1 = XLSX.utils.json_to_sheet(overviewData);
+            XLSX.utils.book_append_sheet(wb, ws1, "ภาพรวมร้านค้า");
+
+            // Sheet 2: Details
+            const detailData = rawData.map(row => ({
+                "ชื่อร้านค้า": row[COLS.NAME],
+                "สินค้า": row[COLS.FOOD_ITEM],
+                "ทุนรวม": row[COLS.COST],
+                "ราคาขาย/หน่วย": row[COLS.UNIT_PRICE],
+                "จำนวน": row[COLS.QTY],
+                "ยอดขายรวม": row[COLS.EST_SALES],
+                "กำไรสุทธิ": row[COLS.PROFIT]
+            }));
+            const ws2 = XLSX.utils.json_to_sheet(detailData);
+            XLSX.utils.book_append_sheet(wb, ws2, "รายละเอียดสินค้า");
+
+            XLSX.writeFile(wb, "BangO_Event_Full_Report.xlsx");
+        }
+
+        // Initialize
+        window.onload = fetchData;
+
+    </script>
+</body>
+</html>
