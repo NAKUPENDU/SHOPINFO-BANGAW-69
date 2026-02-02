@@ -200,39 +200,14 @@
             </div>
 
             <!-- Charts Section -->
-            <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-                <!-- Shop Type Comparison Cards -->
-                <div class="glass-card p-6 flex flex-col">
-                    <h4 class="text-lg font-bold text-gray-700 mb-4 border-b pb-2">สัดส่วนร้านค้า (ทุน vs เช่า)</h4>
-                    <div class="flex gap-4 h-full items-center justify-center py-4">
-                        <!-- Fund Shop Card -->
-                        <div class="bg-green-50 p-6 rounded-2xl text-center w-1/2 border-2 border-green-200 shadow-sm flex flex-col justify-center items-center hover:bg-green-100 transition">
-                             <div class="p-3 bg-green-100 rounded-full text-green-600 mb-2">
-                                <i class="fas fa-hand-holding-usd fa-2x"></i>
-                             </div>
-                             <div class="text-4xl font-extrabold text-green-700" id="count-fund-shops">0</div>
-                             <div class="text-sm text-green-800 font-semibold mt-1">ร้านทุน</div>
-                        </div>
-                        
-                        <div class="text-gray-400 font-bold text-xl italic">VS</div>
-
-                        <!-- Rent Shop Card -->
-                        <div class="bg-red-50 p-6 rounded-2xl text-center w-1/2 border-2 border-red-200 shadow-sm flex flex-col justify-center items-center hover:bg-red-100 transition">
-                             <div class="p-3 bg-red-100 rounded-full text-red-600 mb-2">
-                                <i class="fas fa-file-contract fa-2x"></i>
-                             </div>
-                             <div class="text-4xl font-extrabold text-red-700" id="count-rent-shops">0</div>
-                             <div class="text-sm text-red-800 font-semibold mt-1">ร้านเช่าพื้นที่</div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Food Group Chart -->
+            <div class="grid grid-cols-1 mb-8">
+                <!-- Food Group Pie Chart (Removed Shop Type Cards) -->
                 <div class="glass-card p-6">
-                    <h4 class="text-lg font-bold text-gray-700 mb-4 border-b pb-2">กลุ่มอาหาร (Food Group)</h4>
-                    <div class="h-64 flex justify-center">
+                    <h4 class="text-lg font-bold text-gray-700 mb-4 border-b pb-2">สัดส่วนกลุ่มอาหาร (Food Group Proportion)</h4>
+                    <div class="h-80 flex justify-center">
                         <canvas id="foodGroupChart"></canvas>
                     </div>
+                    <div class="text-center mt-2 text-xs text-gray-500">ข้อมูลจากคอลัมน์ N (Food Group)</div>
                 </div>
             </div>
 
@@ -294,7 +269,9 @@
                     <table class="w-full custom-table text-sm text-left text-gray-600" id="detail-table">
                         <thead class="text-xs uppercase bg-purple-700 text-white">
                             <tr>
+                                <th class="px-4 py-3">รหัสร้าน</th>
                                 <th class="px-4 py-3">ชื่อร้านค้า</th>
+                                <th class="px-4 py-3">เวลาขาย</th>
                                 <th class="px-4 py-3">รายการสินค้า</th>
                                 <th class="px-4 py-3 text-right bg-red-600">ราคาทุน (รวม)</th>
                                 <th class="px-4 py-3 text-right bg-blue-600">ขาย/หน่วย</th>
@@ -332,6 +309,8 @@
         const COLS = {
             NO: 0,              // A: เลขที่
             GROUP: 1,           // B: กลุ่มร้านค้า
+            SHOP_ID: 3,         // D: รหัสร้านค้า
+            TIME_SALE: 5,       // F: เวลาขาย
             NAME: 6,            // G: ชื่อร้านค้า
             FOOD_ITEM: 9,       // J: รายการอาหาร
             FOOD_GROUP: 13,     // N: กลุ่มอาหาร
@@ -342,7 +321,7 @@
             QTY: 19,            // T: จำนวนสินค้า
             EST_SALES: 20,      // U: ประมาณการยอดขาย
             PROFIT: 21,         // V: กำไร/ขาดทุน
-            TIME: 22,           // W: เวลาขาย (Assumed/Placeholder based on requirement)
+            TIME: 22,           // W: เวลาขาย (Keeping for legacy/overview if needed, but F is priority)
             TYPE_RENT: 25,      // Z: ประเภททุน/เช่า
             STATUS: 26,         // AA: สถานะ
             PHONE: 28           // AC: เบอร์โทร
@@ -398,9 +377,6 @@
             let groups = new Set();
             let foodGroups = {};
             
-            // Simplified Shop Types: Fund vs Rent
-            let shopTypes = { "ร้านทุน": 0, "ร้านเช่า": 0, "อื่นๆ": 0 };
-
             data.forEach(row => {
                 // KPIs
                 totalCost += cleanNum(row[COLS.COST]);
@@ -410,22 +386,11 @@
                 if(row[COLS.FOOD_ITEM]) totalItems++;
                 if(row[COLS.GROUP]) groups.add(row[COLS.GROUP]);
 
-                // Food Group Aggregation (Exclude Header)
+                // Food Group Aggregation (Col N, index 13)
+                // Ensure correct data source
                 let fg = (row[COLS.FOOD_GROUP] || "").trim();
                 if (fg && fg !== "กลุ่มอาหาร" && fg !== "Food Group") {
                      foodGroups[fg] = (foodGroups[fg] || 0) + 1;
-                }
-
-                // Shop Type Logic (Fund vs Rent) - Modified to search broadly in multiple columns
-                // Check both Group (Col B) and Type Rent (Col Z) for keywords "เช่า" or "ทุน"
-                let checkStr = ((row[COLS.TYPE_RENT] || "") + " " + (row[COLS.GROUP] || "")).toString();
-                
-                if (checkStr.includes("เช่า")) {
-                    shopTypes["ร้านเช่า"]++;
-                } else if (checkStr.includes("ทุน")) {
-                    shopTypes["ร้านทุน"]++;
-                } else {
-                    shopTypes["อื่นๆ"]++;
                 }
             });
 
@@ -439,10 +404,6 @@
             
             let margin = totalEstSales > 0 ? (totalProfit / totalEstSales) * 100 : 0;
             document.getElementById('kpi-margin').innerText = margin.toFixed(2) + "%";
-
-            // Update NEW Shop Type Cards
-            document.getElementById('count-fund-shops').innerText = shopTypes["ร้านทุน"];
-            document.getElementById('count-rent-shops').innerText = shopTypes["ร้านเช่า"];
 
             // Update Dropdown
             const groupSelect = document.getElementById('search-group');
@@ -463,27 +424,48 @@
         }
 
         function renderCharts(foodGroups) {
-            // Note: shopTypeChart is removed, only foodGroupChart remains
             if (charts.foodGroup) charts.foodGroup.destroy();
 
-            // Bar Chart: Food Group
+            // Pie Chart: Food Group
             const ctx2 = document.getElementById('foodGroupChart').getContext('2d');
             charts.foodGroup = new Chart(ctx2, {
-                type: 'bar',
+                type: 'pie',
                 data: {
                     labels: Object.keys(foodGroups),
                     datasets: [{
                         label: 'จำนวนร้าน',
                         data: Object.values(foodGroups),
-                        backgroundColor: '#ed8936',
-                        borderRadius: 4
+                        backgroundColor: [
+                            '#ff6384', '#36a2eb', '#ffce56', '#4bc0c0', 
+                            '#9966ff', '#ff9f40', '#8ac926', '#1982c4',
+                            '#f15bb5', '#fee440', '#00bbf9', '#9b5de5'
+                        ],
+                        hoverOffset: 4
                     }]
                 },
                 options: { 
                     responsive: true, 
                     maintainAspectRatio: false,
-                    plugins: { legend: { display: false } },
-                    scales: { y: { beginAtZero: true } }
+                    plugins: { 
+                        legend: { 
+                            position: 'right',
+                            labels: {
+                                font: { family: "'Sarabun', sans-serif" }
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    let label = context.label || '';
+                                    if (label) label += ': ';
+                                    let value = context.raw || 0;
+                                    let total = context.chart._metasets[context.datasetIndex].total;
+                                    let percentage = (value / total * 100).toFixed(1) + "%";
+                                    return label + value + ' ร้าน (' + percentage + ')';
+                                }
+                            }
+                        }
+                    }
                 }
             });
         }
@@ -512,7 +494,7 @@
                         <div><i class="fas fa-user-tie text-blue-400"></i> ${row[COLS.COORD] || '-'}</div>
                     </td>
                     <td class="px-4 py-3 text-sm text-blue-600 font-semibold">
-                         <i class="far fa-clock"></i> ${row[COLS.TIME] || '-'}
+                         <i class="far fa-clock"></i> ${row[COLS.TIME_SALE] || '-'}
                     </td>
                     <td class="px-4 py-3 text-right font-bold ${profitClass}">
                         ${row[COLS.PROFIT]}
@@ -544,7 +526,9 @@
                 let marginClass = margin > 20 ? "text-green-600" : (margin > 0 ? "text-orange-500" : "text-red-600");
 
                 tr.innerHTML = `
+                    <td class="px-4 py-3 text-sm text-gray-500">${row[COLS.SHOP_ID] || '-'}</td>
                     <td class="px-4 py-3 font-bold text-gray-700">${row[COLS.NAME]}</td>
+                    <td class="px-4 py-3 text-sm text-blue-600">${row[COLS.TIME_SALE] || '-'}</td>
                     <td class="px-4 py-3 text-gray-600">${row[COLS.FOOD_ITEM]}</td>
                     <td class="px-4 py-3 text-right font-mono text-red-600">${row[COLS.COST]}</td>
                     <td class="px-4 py-3 text-right font-mono text-blue-600">${row[COLS.UNIT_PRICE] || '-'}</td>
@@ -584,7 +568,8 @@
             const filtered = rawData.filter(row => {
                 const rName = (row[COLS.NAME] || "").toLowerCase();
                 const rItem = (row[COLS.FOOD_ITEM] || "").toLowerCase();
-                return rName.includes(term) || rItem.includes(term);
+                const rID = (row[COLS.SHOP_ID] || "").toLowerCase(); // Added filter by ID
+                return rName.includes(term) || rItem.includes(term) || rID.includes(term);
             });
             renderDetailTable(filtered);
         }
@@ -607,7 +592,9 @@
 
             // Sheet 2: Details
             const detailData = rawData.map(row => ({
+                "รหัสร้าน": row[COLS.SHOP_ID], // New
                 "ชื่อร้านค้า": row[COLS.NAME],
+                "เวลาขาย": row[COLS.TIME_SALE], // New
                 "สินค้า": row[COLS.FOOD_ITEM],
                 "ทุนรวม": row[COLS.COST],
                 "ราคาขาย/หน่วย": row[COLS.UNIT_PRICE],
