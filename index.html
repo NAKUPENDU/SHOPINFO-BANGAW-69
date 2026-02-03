@@ -1,4 +1,4 @@
-
+<!DOCTYPE html>
 <html lang="th">
 <head>
     <meta charset="UTF-8">
@@ -554,7 +554,7 @@
 
         function filterMainTable() {
             // New: Get Shop Group value
-            const shopGroup = document.getElementById('search-shop-group').value.toLowerCase();
+            const shopGroupInput = document.getElementById('search-shop-group').value.trim().toLowerCase();
             
             const name = document.getElementById('search-name').value.toLowerCase();
             const sponsor = document.getElementById('search-sponsor').value.toLowerCase();
@@ -562,13 +562,22 @@
             const group = document.getElementById('search-group').value;
 
             const filtered = rawData.filter(row => {
-                const rShopGroup = (row[COLS.GROUP] || "").toLowerCase(); // New: Column B
+                const rShopGroup = (row[COLS.GROUP] || "").toString().trim().toLowerCase(); // New: Column B
                 const rName = (row[COLS.NAME] || "").toLowerCase();
                 const rSponsor = (row[COLS.SPONSOR] || "").toLowerCase();
                 const rCoord = (row[COLS.COORD] || "").toLowerCase();
                 const rFoodGroup = (row[COLS.FOOD_GROUP] || "");
 
-                return rShopGroup.includes(shopGroup) && // New condition
+                // Logic for Exact Match on Shop Group
+                let matchShopGroup = true;
+                if (shopGroupInput !== "") {
+                     // Support comma/space separated values (e.g. "1, 2" or "1 2")
+                     const tokens = shopGroupInput.split(/[\s,]+/).filter(t => t !== "");
+                     // Check if row group matches EXACTLY one of the tokens
+                     matchShopGroup = tokens.includes(rShopGroup);
+                }
+
+                return matchShopGroup && // Updated condition
                        rName.includes(name) &&
                        rSponsor.includes(sponsor) &&
                        rCoord.includes(coord) &&
